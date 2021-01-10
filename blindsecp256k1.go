@@ -1,5 +1,7 @@
 // Package blindsecp256k1 implements the Blind signature scheme explained at
 // http://www.isecure-journal.com/article_39171_47f9ec605dd3918c2793565ec21fcd7a.pdf
+//
+// LICENSE can be found at https://github.com/arnaucube/go-blindsecp256k1/blob/master/LICENSE
 package blindsecp256k1
 
 // WARNING: WIP code
