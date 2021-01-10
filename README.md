@@ -27,3 +27,6 @@ sig := blindsecp256k1.Unblind(sBlind, msg, user)
 verified := blindsecp256k1.Verify(msg, sig, signerPublicData.Q)
 assert.True(t, verified)
 ```
+
+## WASM usage
+WASM wrappers for browser usage can be found at the [wasm](https://github.com/arnaucube/go-blindsecp256k1/tree/master/wasm/) directory with an example in html&js.

@@ -1,0 +1,18 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>blindsecp256k1 WASM wrappers</title>
+</head>
+<body>
+	<script src="wasm_exec.js"></script>
+	<script>
+		const go = new Go();
+		WebAssembly.instantiateStreaming(fetch('blindsecp256k1.wasm'), go.importObject).then(function(dat) {
+		    go.run(dat.instance);
+		});
+	</script>
+	<h3>Open the browser console to see the logs</h3>
+	<button onClick="test();">test()</button>
+	<script src="index.js"></script>
+</body>
+</html>
