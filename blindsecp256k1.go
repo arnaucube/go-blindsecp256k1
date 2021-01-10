@@ -12,18 +12,18 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	"github.com/btcsuite/btcd/btcec"
 )
 
 var (
 	// G represents the base point of secp256k1
 	G *Point = &Point{
-		X: secp256k1.S256().Gx,
-		Y: secp256k1.S256().Gy,
+		X: btcec.S256().Gx,
+		Y: btcec.S256().Gy,
 	}
 
 	// N represents the order of G of secp256k1
-	N *big.Int = secp256k1.S256().N
+	N *big.Int = btcec.S256().N
 )
 
 // Point represents a point on the secp256k1 curve
@@ -34,7 +34,7 @@ type Point struct {
 
 // Add performs the Point addition
 func (p *Point) Add(q *Point) *Point {
-	x, y := secp256k1.S256().Add(p.X, p.Y, q.X, q.Y)
+	x, y := btcec.S256().Add(p.X, p.Y, q.X, q.Y)
 	return &Point{
 		X: x,
 		Y: y,
@@ -43,7 +43,7 @@ func (p *Point) Add(q *Point) *Point {
 
 // Mul performs the Point scalar multiplication
 func (p *Point) Mul(scalar *big.Int) *Point {
-	x, y := secp256k1.S256().ScalarMult(p.X, p.Y, scalar.Bytes())
+	x, y := btcec.S256().ScalarMult(p.X, p.Y, scalar.Bytes())
 	return &Point{
 		X: x,
 		Y: y,
