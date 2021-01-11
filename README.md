@@ -1,6 +1,6 @@
 # go-blindsecp256k1 [![GoDoc](https://godoc.org/github.com/arnaucube/go-blindsecp256k1?status.svg)](https://godoc.org/github.com/arnaucube/go-blindsecp256k1) [![Go Report Card](https://goreportcard.com/badge/github.com/arnaucube/go-blindsecp256k1)](https://goreportcard.com/report/github.com/arnaucube/go-blindsecp256k1) [![Test](https://github.com/arnaucube/go-blindsecp256k1/workflows/Test/badge.svg)](https://github.com/arnaucube/go-blindsecp256k1/actions?query=workflow%3ATest)
 
-Blind signature over [secp256k1](https://en.bitcoin.it/wiki/Secp256k1), based on *"[An Efficient Blind Signature Scheme Based on the Elliptic Curve Discrete Logarithm Problem](http://www.isecure-journal.com/article_39171_47f9ec605dd3918c2793565ec21fcd7a.pdf)"* paper.
+Blind signature over [secp256k1](https://en.bitcoin.it/wiki/Secp256k1), based on *"[New Blind Signature Schemes Based on the (Elliptic Curve) Discrete Logarithm Problem](https://sci-hub.do/10.1109/ICCKE.2013.6682844)"* paper by Hamid Mala & Nafiseh Nezhadansari.
 
 **WARNING**: this repo is experimental, do not use in production.
 

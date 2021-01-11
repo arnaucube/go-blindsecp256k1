@@ -1,5 +1,7 @@
 // Package blindsecp256k1 implements the Blind signature scheme explained at
-// http://www.isecure-journal.com/article_39171_47f9ec605dd3918c2793565ec21fcd7a.pdf
+// "New Blind Signature Schemes Based on the (Elliptic Curve) Discrete
+// Logarithm Problem", by Hamid Mala & Nafiseh Nezhadansari
+// https://sci-hub.do/10.1109/ICCKE.2013.6682844
 //
 // LICENSE can be found at https://github.com/arnaucube/go-blindsecp256k1/blob/master/LICENSE
 //
@@ -13,6 +15,7 @@ import (
 	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
@@ -127,7 +130,7 @@ func (signer *SignerPrivateData) PublicData() *SignerPublicData {
 // SignerPrivateData values
 func (signer *SignerPrivateData) BlindSign(mBlinded *big.Int) *big.Int {
 	// TODO add pending checks
-	// s' = d(m') + k
+	// s' = dm' + k
 	sBlind := new(big.Int).Add(
 		new(big.Int).Mul(signer.D.BigInt(), mBlinded),
 		signer.K)
@@ -139,9 +142,8 @@ func (signer *SignerPrivateData) BlindSign(mBlinded *big.Int) *big.Int {
 type UserSecretData struct {
 	A *big.Int
 	B *big.Int
-	C *big.Int
 
-	F *Point // public
+	F *Point // public (in the paper is R)
 }
 
 // Blind performs the blinding operation on m using SignerPublicData parameters
@@ -149,25 +151,21 @@ func Blind(m *big.Int, signer *SignerPublicData) (*big.Int, *UserSecretData) {
 	u := &UserSecretData{}
 	u.A = newRand()
 	u.B = newRand()
-	u.C = newRand()
-	binv := new(big.Int).ModInverse(u.B, N)
 
-	// F = b^-1 R + a b^-1 Q + c G
-	bR := signer.R.Mul(binv)
-	abinv := new(big.Int).Mul(u.A, binv)
-	abinv = new(big.Int).Mod(abinv, N)
-	abQ := signer.Q.Point().Mul(abinv)
-	cG := G.Mul(u.C)
-	u.F = bR.Add(abQ).Add(cG)
-	// TODO check F==O
+	// (R) F = aR' + bG
+	aR := signer.R.Mul(u.A)
+	bG := G.Mul(u.B)
+	u.F = aR.Add(bG)
 
-	r := new(big.Int).Mod(u.F.X, N)
+	rx := new(big.Int).Mod(u.F.X, N)
 
-	// m' = br(m)+a
-	br := new(big.Int).Mul(u.B, r)
-	brm := new(big.Int).Mul(br, m)
-	mBlinded := new(big.Int).Add(brm, u.A)
-	mBlinded = new(big.Int).Mod(mBlinded, N)
+	// m' = a^-1 rx h(m)
+	ainv := new(big.Int).ModInverse(u.A, N)
+	ainvrx := new(big.Int).Mul(ainv, rx)
+	hBytes := crypto.Keccak256(m.Bytes())
+	h := new(big.Int).SetBytes(hBytes)
+	mBlinded := new(big.Int).Mul(ainvrx, h)
+
 	return mBlinded, u
 }
 
@@ -180,11 +178,9 @@ type Signature struct {
 // Unblind performs the unblinding operation of the blinded signature for the
 // given message m and the UserSecretData
 func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
-	// s = b^-1 s' + c
-	binv := new(big.Int).ModInverse(u.B, N)
-	bs := new(big.Int).Mul(binv, sBlind)
-	s := new(big.Int).Add(bs, u.C)
-	s = new(big.Int).Mod(s, N)
+	// s = a s' + b
+	as := new(big.Int).Mul(u.A, sBlind)
+	s := new(big.Int).Add(as, u.B)
 
 	return &Signature{
 		S: s,
@@ -197,15 +193,19 @@ func Verify(m *big.Int, signature *Signature, q *PublicKey) bool {
 	// TODO add pending checks
 	sG := G.Mul(signature.S) // sG
 
-	r := new(big.Int).Mod(signature.F.X, N) // r = Fx mod N
-	rm := new(big.Int).Mul(r, m)
-	rm = new(big.Int).Mod(rm, N)
-	rmQ := q.Point().Mul(rm)
-	rmQF := rmQ.Add(signature.F) // rmQ + F
+	hBytes := crypto.Keccak256(m.Bytes())
+	h := new(big.Int).SetBytes(hBytes)
 
-	// check sG == rmQ + F
-	if bytes.Equal(sG.X.Bytes(), rmQF.X.Bytes()) &&
-		bytes.Equal(sG.Y.Bytes(), rmQF.Y.Bytes()) {
+	rx := new(big.Int).Mod(signature.F.X, N)
+	rxh := new(big.Int).Mul(rx, h)
+	// rxhG := G.Mul(rxh) // originally the paper uses G
+	rxhG := q.Point().Mul(rxh)
+
+	right := signature.F.Add(rxhG)
+
+	// check sG == R + rx h(m) G (where R in this code is F)
+	if bytes.Equal(sG.X.Bytes(), right.X.Bytes()) &&
+		bytes.Equal(sG.Y.Bytes(), right.Y.Bytes()) {
 		return true
 	}
 	return false
