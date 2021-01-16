@@ -94,46 +94,20 @@ func (pk *PublicKey) Point() *Point {
 	return (*Point)(pk)
 }
 
-// SignerPrivateData contains the secret values from the Signer
-type SignerPrivateData struct {
-	D *PrivateKey
-	K *big.Int
-}
-
-// SignerPublicData contains the public values from the Signer (generated from
-// its SignerPrivateData)
-type SignerPublicData struct {
-	// Q is the Signer Public Key
-	Q *PublicKey // = skG
-	R *Point     // = kG
-}
-
-// NewSigner returns a new SignerPrivateData with random D & K
-func NewSigner() *SignerPrivateData {
-	sk := NewPrivateKey()
+// NewRequestParameters returns a new random k (secret) & R (public) parameters
+func NewRequestParameters() (*big.Int, *Point) {
 	k := newRand()
-	return &SignerPrivateData{
-		D: sk,
-		K: k,
-	}
+	return k, G.Mul(k) // R = kG
 }
 
-// PublicData returns the SignerPublicData from the SignerPrivateData
-func (signer *SignerPrivateData) PublicData() *SignerPublicData {
-	return &SignerPublicData{
-		Q: signer.D.Public(), // Q = dG
-		R: G.Mul(signer.K),   // R = kG
-	}
-}
-
-// BlindSign performs the blind signature on the given mBlinded using
-// SignerPrivateData values
-func (signer *SignerPrivateData) BlindSign(mBlinded *big.Int) *big.Int {
+// BlindSign performs the blind signature on the given mBlinded using the
+// PrivateKey and the secret k values
+func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) *big.Int {
 	// TODO add pending checks
 	// s' = dm' + k
 	sBlind := new(big.Int).Add(
-		new(big.Int).Mul(signer.D.BigInt(), mBlinded),
-		signer.K)
+		new(big.Int).Mul(sk.BigInt(), mBlinded),
+		k)
 	return sBlind
 }
 
@@ -146,16 +120,18 @@ type UserSecretData struct {
 	F *Point // public (in the paper is R)
 }
 
-// Blind performs the blinding operation on m using SignerPublicData parameters
-func Blind(m *big.Int, signer *SignerPublicData) (*big.Int, *UserSecretData) {
+// Blind performs the blinding operation on m using signerR parameter
+func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
 	u := &UserSecretData{}
 	u.A = newRand()
 	u.B = newRand()
 
 	// (R) F = aR' + bG
-	aR := signer.R.Mul(u.A)
+	aR := signerR.Mul(u.A)
 	bG := G.Mul(u.B)
 	u.F = aR.Add(bG)
+
+	// TODO check that F != O (point at infinity)
 
 	rx := new(big.Int).Mod(u.F.X, N)
 

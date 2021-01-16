@@ -57,8 +57,7 @@ func blindv0(this js.Value, values []js.Value) interface{} {
 		Y: signerRy,
 	}
 
-	signer := &blindsecp256k1v0.SignerPublicData{signerQ, signerR}
-	mBlinded, user := blindsecp256k1v0.Blind(m, signer)
+	mBlinded, user := blindsecp256k1v0.Blind(m, signerQ, signerR)
 
 	r := make(map[string]interface{})
 	r["mBlinded"] = mBlinded.String()
@@ -108,28 +107,19 @@ func unblindv0(this js.Value, values []js.Value) interface{} {
 }
 func blind(this js.Value, values []js.Value) interface{} {
 	mStr := values[0].String()
-	signerQxStr := values[1].String()
-	signerQyStr := values[2].String()
-	signerRxStr := values[3].String()
-	signerRyStr := values[4].String()
+	signerRxStr := values[1].String()
+	signerRyStr := values[2].String()
 
 	m := stringToBigInt(mStr)
-	signerQx := stringToBigInt(signerQxStr)
-	signerQy := stringToBigInt(signerQyStr)
 	signerRx := stringToBigInt(signerRxStr)
 	signerRy := stringToBigInt(signerRyStr)
 
-	signerQ := &blindsecp256k1.PublicKey{
-		X: signerQx,
-		Y: signerQy,
-	}
 	signerR := &blindsecp256k1.Point{
 		X: signerRx,
 		Y: signerRy,
 	}
 
-	signer := &blindsecp256k1.SignerPublicData{signerQ, signerR}
-	mBlinded, user := blindsecp256k1.Blind(m, signer)
+	mBlinded, user := blindsecp256k1.Blind(m, signerR)
 
 	r := make(map[string]interface{})
 	r["mBlinded"] = mBlinded.String()

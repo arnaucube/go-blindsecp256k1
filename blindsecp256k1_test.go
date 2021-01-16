@@ -8,23 +8,25 @@ import (
 )
 
 func TestFlow(t *testing.T) {
-	// message to be signed
+	// signer: create new signer key pair
+	sk := NewPrivateKey()
+	signerPubK := sk.Public()
+
+	// signer: when user requests new R parameter to blind a new msg,
+	// create new signerR (public) with its secret k
+	k, signerR := NewRequestParameters()
+
+	// user: blinds the msg using signer's R
 	msg := new(big.Int).SetBytes([]byte("test"))
+	msgBlinded, userSecretData := Blind(msg, signerR)
 
-	// create new signer
-	signerPrivateData := NewSigner()
-	signerPublicData := signerPrivateData.PublicData()
+	// signer: signs the blinded message using its private key & secret k
+	sBlind := sk.BlindSign(msgBlinded, k)
 
-	// user blinds the msg
-	msgBlinded, user := Blind(msg, signerPublicData)
+	// user: unblinds the blinded signature
+	sig := Unblind(sBlind, msg, userSecretData)
 
-	// signer signs the blinded message
-	sBlind := signerPrivateData.BlindSign(msgBlinded)
-
-	// user unblinds the blinded signature
-	sig := Unblind(sBlind, msg, user)
-
-	// signature can be verified with signer PublicKey (Q)
-	verified := Verify(msg, sig, signerPublicData.Q)
+	// signature can be verified with signer PublicKey
+	verified := Verify(msg, sig, signerPubK)
 	assert.True(t, verified)
 }

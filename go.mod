@@ -1,4 +1,4 @@
-module blindsecp256k1
+module github.com/arnaucube/go-blindsecp256k1
 
 go 1.14
 

@@ -93,46 +93,20 @@ func (pk *PublicKey) Point() *Point {
 	return (*Point)(pk)
 }
 
-// SignerPrivateData contains the secret values from the Signer
-type SignerPrivateData struct {
-	D *PrivateKey
-	K *big.Int
-}
-
-// SignerPublicData contains the public values from the Signer (generated from
-// its SignerPrivateData)
-type SignerPublicData struct {
-	// Q is the Signer Public Key
-	Q *PublicKey // = skG
-	R *Point     // = kG
-}
-
-// NewSigner returns a new SignerPrivateData with random D & K
-func NewSigner() *SignerPrivateData {
-	sk := NewPrivateKey()
+// NewRequestParameters returns a new random k (secret) & R (public) parameters
+func NewRequestParameters() (*big.Int, *Point) {
 	k := newRand()
-	return &SignerPrivateData{
-		D: sk,
-		K: k,
-	}
-}
-
-// PublicData returns the SignerPublicData from the SignerPrivateData
-func (signer *SignerPrivateData) PublicData() *SignerPublicData {
-	return &SignerPublicData{
-		Q: signer.D.Public(), // Q = dG
-		R: G.Mul(signer.K),   // R = kG
-	}
+	return k, G.Mul(k) // R = kG
 }
 
 // BlindSign performs the blind signature on the given mBlinded using
 // SignerPrivateData values
-func (signer *SignerPrivateData) BlindSign(mBlinded *big.Int) *big.Int {
+func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) *big.Int {
 	// TODO add pending checks
 	// s' = d(m') + k
 	sBlind := new(big.Int).Add(
-		new(big.Int).Mul(signer.D.BigInt(), mBlinded),
-		signer.K)
+		new(big.Int).Mul(sk.BigInt(), mBlinded),
+		k)
 	return sBlind
 }
 
@@ -147,7 +121,7 @@ type UserSecretData struct {
 }
 
 // Blind performs the blinding operation on m using SignerPublicData parameters
-func Blind(m *big.Int, signer *SignerPublicData) (*big.Int, *UserSecretData) {
+func Blind(m *big.Int, signerPubK *PublicKey, signerR *Point) (*big.Int, *UserSecretData) {
 	u := &UserSecretData{}
 	u.A = newRand()
 	u.B = newRand()
@@ -155,10 +129,10 @@ func Blind(m *big.Int, signer *SignerPublicData) (*big.Int, *UserSecretData) {
 	binv := new(big.Int).ModInverse(u.B, N)
 
 	// F = b^-1 R + a b^-1 Q + c G
-	bR := signer.R.Mul(binv)
+	bR := signerR.Mul(binv)
 	abinv := new(big.Int).Mul(u.A, binv)
 	abinv = new(big.Int).Mod(abinv, N)
-	abQ := signer.Q.Point().Mul(abinv)
+	abQ := signerPubK.Point().Mul(abinv)
 	cG := G.Mul(u.C)
 	u.F = bR.Add(abQ).Add(cG)
 	// TODO check F==O
