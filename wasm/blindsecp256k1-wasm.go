@@ -1,12 +1,13 @@
 package main
 
 import (
-	"blindsecp256k1"
 	"fmt"
 	"math/big"
 	"syscall/js"
 
-	blindsecp256k1v0 "blindsecp256k1/v0"
+	"github.com/arnaucube/go-blindsecp256k1"
+
+	blindsecp256k1v0 "github.com/arnaucube/go-blindsecp256k1/v0"
 )
 
 func main() {
@@ -17,14 +18,18 @@ func main() {
 }
 
 func registerCallbacks() {
+	js.Global().Set("wasmReady", js.FuncOf(ready))
+
 	// blindv0 & unblindv0 uses:
 	// http://www.isecure-journal.com/article_39171_47f9ec605dd3918c2793565ec21fcd7a.pdf
-	js.Global().Set("blindv0", js.FuncOf(blindv0))
-	js.Global().Set("unblindv0", js.FuncOf(unblindv0))
+	js.Global().Set("wasmBlindv0", js.FuncOf(blindv0))
+	js.Global().Set("wasmUnblindv0", js.FuncOf(unblindv0))
+	js.Global().Set("wasmVerifyv0", js.FuncOf(verifyv0))
 
 	// blind & unblind uses: https://sci-hub.do/10.1109/ICCKE.2013.6682844
-	js.Global().Set("blind", js.FuncOf(blind))
-	js.Global().Set("unblind", js.FuncOf(unblind))
+	js.Global().Set("wasmBlind", js.FuncOf(blind))
+	js.Global().Set("wasmUnblind", js.FuncOf(unblind))
+	js.Global().Set("wasmVerify", js.FuncOf(verify))
 }
 
 func stringToBigInt(s string) *big.Int {
@@ -33,6 +38,10 @@ func stringToBigInt(s string) *big.Int {
 		panic(fmt.Errorf("error parsing string *big.Int: %s", s))
 	}
 	return b
+}
+
+func ready(this js.Value, values []js.Value) interface{} {
+	return "ready"
 }
 
 func blindv0(this js.Value, values []js.Value) interface{} {
@@ -48,11 +57,11 @@ func blindv0(this js.Value, values []js.Value) interface{} {
 	signerRx := stringToBigInt(signerRxStr)
 	signerRy := stringToBigInt(signerRyStr)
 
-	signerQ := &blindsecp256k1v0.PublicKey{
+	signerQ := &blindsecp256k1.PublicKey{
 		X: signerQx,
 		Y: signerQy,
 	}
-	signerR := &blindsecp256k1v0.Point{
+	signerR := &blindsecp256k1.Point{
 		X: signerRx,
 		Y: signerRy,
 	}
@@ -85,7 +94,7 @@ func unblindv0(this js.Value, values []js.Value) interface{} {
 	uFx := stringToBigInt(uFxStr)
 	uFy := stringToBigInt(uFyStr)
 
-	uF := &blindsecp256k1v0.Point{
+	uF := &blindsecp256k1.Point{
 		X: uFx,
 		Y: uFy,
 	}
@@ -105,6 +114,39 @@ func unblindv0(this js.Value, values []js.Value) interface{} {
 	r["fy"] = sig.F.Y.String()
 	return r
 }
+
+func verifyv0(this js.Value, values []js.Value) interface{} {
+	mStr := values[0].String()
+	sigSStr := values[1].String()
+	sigFxStr := values[2].String()
+	sigFyStr := values[3].String()
+	qxStr := values[4].String()
+	qyStr := values[5].String()
+
+	m := stringToBigInt(mStr)
+	sigS := stringToBigInt(sigSStr)
+	sigFx := stringToBigInt(sigFxStr)
+	sigFy := stringToBigInt(sigFyStr)
+	qx := stringToBigInt(qxStr)
+	qy := stringToBigInt(qyStr)
+
+	q := &blindsecp256k1.PublicKey{
+		X: qx,
+		Y: qy,
+	}
+	sig := &blindsecp256k1.Signature{
+		S: sigS,
+		F: &blindsecp256k1.Point{
+			X: sigFx,
+			Y: sigFy,
+		},
+	}
+	verified := blindsecp256k1.Verify(m, sig, q)
+
+	r := verified
+	return r
+}
+
 func blind(this js.Value, values []js.Value) interface{} {
 	mStr := values[0].String()
 	signerRxStr := values[1].String()
@@ -162,5 +204,37 @@ func unblind(this js.Value, values []js.Value) interface{} {
 	r["s"] = sig.S.String()
 	r["fx"] = sig.F.X.String()
 	r["fy"] = sig.F.Y.String()
+	return r
+}
+
+func verify(this js.Value, values []js.Value) interface{} {
+	mStr := values[0].String()
+	sigSStr := values[1].String()
+	sigFxStr := values[2].String()
+	sigFyStr := values[3].String()
+	qxStr := values[4].String()
+	qyStr := values[5].String()
+
+	m := stringToBigInt(mStr)
+	sigS := stringToBigInt(sigSStr)
+	sigFx := stringToBigInt(sigFxStr)
+	sigFy := stringToBigInt(sigFyStr)
+	qx := stringToBigInt(qxStr)
+	qy := stringToBigInt(qyStr)
+
+	q := &blindsecp256k1.PublicKey{
+		X: qx,
+		Y: qy,
+	}
+	sig := &blindsecp256k1.Signature{
+		S: sigS,
+		F: &blindsecp256k1.Point{
+			X: sigFx,
+			Y: sigFy,
+		},
+	}
+	verified := blindsecp256k1.Verify(m, sig, q)
+
+	r := verified
 	return r
 }

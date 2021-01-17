@@ -14,43 +14,8 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/arnaucube/go-blindsecp256k1"
 )
-
-var (
-	// G represents the base point of secp256k1
-	G *Point = &Point{
-		X: btcec.S256().Gx,
-		Y: btcec.S256().Gy,
-	}
-
-	// N represents the order of G of secp256k1
-	N *big.Int = btcec.S256().N
-)
-
-// Point represents a point on the secp256k1 curve
-type Point struct {
-	X *big.Int
-	Y *big.Int
-}
-
-// Add performs the Point addition
-func (p *Point) Add(q *Point) *Point {
-	x, y := btcec.S256().Add(p.X, p.Y, q.X, q.Y)
-	return &Point{
-		X: x,
-		Y: y,
-	}
-}
-
-// Mul performs the Point scalar multiplication
-func (p *Point) Mul(scalar *big.Int) *Point {
-	x, y := btcec.S256().ScalarMult(p.X, p.Y, scalar.Bytes())
-	return &Point{
-		X: x,
-		Y: y,
-	}
-}
 
 // WIP
 func newRand() *big.Int {
@@ -60,14 +25,11 @@ func newRand() *big.Int {
 		panic(err)
 	}
 	bi := new(big.Int).SetBytes(b[:])
-	return new(big.Int).Mod(bi, N)
+	return new(big.Int).Mod(bi, blindsecp256k1.N)
 }
 
 // PrivateKey represents the signer's private key
 type PrivateKey big.Int
-
-// PublicKey represents the signer's public key
-type PublicKey Point
 
 // NewPrivateKey returns a new random private key
 func NewPrivateKey() *PrivateKey {
@@ -82,21 +44,16 @@ func (sk *PrivateKey) BigInt() *big.Int {
 }
 
 // Public returns the PublicKey from the PrivateKey
-func (sk *PrivateKey) Public() *PublicKey {
-	Q := G.Mul(sk.BigInt())
-	pk := PublicKey(*Q)
+func (sk *PrivateKey) Public() *blindsecp256k1.PublicKey {
+	Q := blindsecp256k1.G.Mul(sk.BigInt())
+	pk := blindsecp256k1.PublicKey(*Q)
 	return &pk
 }
 
-// Point returns a *Point representation of the PublicKey
-func (pk *PublicKey) Point() *Point {
-	return (*Point)(pk)
-}
-
 // NewRequestParameters returns a new random k (secret) & R (public) parameters
-func NewRequestParameters() (*big.Int, *Point) {
+func NewRequestParameters() (*big.Int, *blindsecp256k1.Point) {
 	k := newRand()
-	return k, G.Mul(k) // R = kG
+	return k, blindsecp256k1.G.Mul(k) // R = kG
 }
 
 // BlindSign performs the blind signature on the given mBlinded using
@@ -117,50 +74,51 @@ type UserSecretData struct {
 	B *big.Int
 	C *big.Int
 
-	F *Point // public
+	F *blindsecp256k1.Point // public
 }
 
 // Blind performs the blinding operation on m using SignerPublicData parameters
-func Blind(m *big.Int, signerPubK *PublicKey, signerR *Point) (*big.Int, *UserSecretData) {
+func Blind(m *big.Int, signerPubK *blindsecp256k1.PublicKey,
+	signerR *blindsecp256k1.Point) (*big.Int, *UserSecretData) {
 	u := &UserSecretData{}
 	u.A = newRand()
 	u.B = newRand()
 	u.C = newRand()
-	binv := new(big.Int).ModInverse(u.B, N)
+	binv := new(big.Int).ModInverse(u.B, blindsecp256k1.N)
 
 	// F = b^-1 R + a b^-1 Q + c G
 	bR := signerR.Mul(binv)
 	abinv := new(big.Int).Mul(u.A, binv)
-	abinv = new(big.Int).Mod(abinv, N)
+	abinv = new(big.Int).Mod(abinv, blindsecp256k1.N)
 	abQ := signerPubK.Point().Mul(abinv)
-	cG := G.Mul(u.C)
+	cG := blindsecp256k1.G.Mul(u.C)
 	u.F = bR.Add(abQ).Add(cG)
 	// TODO check F==O
 
-	r := new(big.Int).Mod(u.F.X, N)
+	r := new(big.Int).Mod(u.F.X, blindsecp256k1.N)
 
 	// m' = br(m)+a
 	br := new(big.Int).Mul(u.B, r)
 	brm := new(big.Int).Mul(br, m)
 	mBlinded := new(big.Int).Add(brm, u.A)
-	mBlinded = new(big.Int).Mod(mBlinded, N)
+	mBlinded = new(big.Int).Mod(mBlinded, blindsecp256k1.N)
 	return mBlinded, u
 }
 
 // Signature contains the signature values S & F
 type Signature struct {
 	S *big.Int
-	F *Point
+	F *blindsecp256k1.Point
 }
 
 // Unblind performs the unblinding operation of the blinded signature for the
 // given message m and the UserSecretData
 func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
 	// s = b^-1 s' + c
-	binv := new(big.Int).ModInverse(u.B, N)
+	binv := new(big.Int).ModInverse(u.B, blindsecp256k1.N)
 	bs := new(big.Int).Mul(binv, sBlind)
 	s := new(big.Int).Add(bs, u.C)
-	s = new(big.Int).Mod(s, N)
+	s = new(big.Int).Mod(s, blindsecp256k1.N)
 
 	return &Signature{
 		S: s,
@@ -169,13 +127,13 @@ func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
 }
 
 // Verify checks the signature of the message m for the given PublicKey
-func Verify(m *big.Int, signature *Signature, q *PublicKey) bool {
+func Verify(m *big.Int, signature *Signature, q *blindsecp256k1.PublicKey) bool {
 	// TODO add pending checks
-	sG := G.Mul(signature.S) // sG
+	sG := blindsecp256k1.G.Mul(signature.S) // sG
 
-	r := new(big.Int).Mod(signature.F.X, N) // r = Fx mod N
+	r := new(big.Int).Mod(signature.F.X, blindsecp256k1.N) // r = Fx mod N
 	rm := new(big.Int).Mul(r, m)
-	rm = new(big.Int).Mod(rm, N)
+	rm = new(big.Int).Mod(rm, blindsecp256k1.N)
 	rmQ := q.Point().Mul(rm)
 	rmQF := rmQ.Add(signature.F) // rmQ + F
 
