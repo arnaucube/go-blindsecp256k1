@@ -12,8 +12,6 @@ package blindsecp256k1
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/json"
-	"fmt"
 	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -55,40 +53,6 @@ func (p *Point) Mul(scalar *big.Int) *Point {
 	}
 }
 
-// MarshalJSON implements the json marshaler for the Point
-func (p Point) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		X string `json:"x"`
-		Y string `json:"y"`
-	}{
-		X: p.X.String(),
-		Y: p.Y.String(),
-	})
-}
-
-// UnmarshalJSON implements the json unmarshaler for the Point
-func (p *Point) UnmarshalJSON(b []byte) error {
-	aux := &struct {
-		X string `json:"x"`
-		Y string `json:"y"`
-	}{}
-	err := json.Unmarshal(b, &aux)
-	if err != nil {
-		return err
-	}
-	x, ok := new(big.Int).SetString(aux.X, 10)
-	if !ok {
-		return fmt.Errorf("Can not parse Point.X %s", aux.X)
-	}
-	y, ok := new(big.Int).SetString(aux.Y, 10)
-	if !ok {
-		return fmt.Errorf("Can not parse Point.Y %s", aux.Y)
-	}
-	p.X = x
-	p.Y = y
-	return nil
-}
-
 // WIP
 func newRand() *big.Int {
 	var b [32]byte
@@ -105,23 +69,6 @@ type PrivateKey big.Int
 
 // PublicKey represents the signer's public key
 type PublicKey Point
-
-// MarshalJSON implements the json marshaler for the PublicKey
-func (pk PublicKey) MarshalJSON() ([]byte, error) {
-	return json.Marshal(pk.Point())
-}
-
-// UnmarshalJSON implements the json unmarshaler for the PublicKey
-func (pk *PublicKey) UnmarshalJSON(b []byte) error {
-	var point *Point
-	err := json.Unmarshal(b, &point)
-	if err != nil {
-		return err
-	}
-	pk.X = point.X
-	pk.Y = point.Y
-	return nil
-}
 
 // NewPrivateKey returns a new random private key
 func NewPrivateKey() *PrivateKey {
@@ -202,60 +149,6 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
 type Signature struct {
 	S *big.Int
 	F *Point
-}
-
-// MarshalJSON implements the json marshaler for the Signature
-func (sig Signature) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		S string `json:"s"`
-		F struct {
-			X string `json:"x"`
-			Y string `json:"y"`
-		} `json:"f"`
-	}{
-		S: sig.S.String(),
-		F: struct {
-			X string `json:"x"`
-			Y string `json:"y"`
-		}{
-			X: sig.F.X.String(),
-			Y: sig.F.Y.String(),
-		},
-	})
-}
-
-// UnmarshalJSON implements the json unmarshaler for the Signature
-func (sig *Signature) UnmarshalJSON(b []byte) error {
-	aux := &struct {
-		S string `json:"s"`
-		F struct {
-			X string `json:"x"`
-			Y string `json:"y"`
-		} `json:"f"`
-	}{}
-	err := json.Unmarshal(b, &aux)
-	if err != nil {
-		return err
-	}
-
-	s, ok := new(big.Int).SetString(aux.S, 10)
-	if !ok {
-		return fmt.Errorf("Can not parse sig.S %s", aux.S)
-	}
-	sig.S = s
-
-	x, ok := new(big.Int).SetString(aux.F.X, 10)
-	if !ok {
-		return fmt.Errorf("Can not parse sig.F.X %s", aux.F.X)
-	}
-	y, ok := new(big.Int).SetString(aux.F.Y, 10)
-	if !ok {
-		return fmt.Errorf("Can not parse sig.F.Y %s", aux.F.Y)
-	}
-	sig.F = &Point{}
-	sig.F.X = x
-	sig.F.Y = y
-	return nil
 }
 
 // Unblind performs the unblinding operation of the blinded signature for the

@@ -1,12 +1,10 @@
 package blindsecp256k1
 
 import (
-	"encoding/json"
 	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFlow(t *testing.T) {
@@ -31,48 +29,4 @@ func TestFlow(t *testing.T) {
 	// signature can be verified with signer PublicKey
 	verified := Verify(msg, sig, signerPubK)
 	assert.True(t, verified)
-}
-
-func TestMarshalers(t *testing.T) {
-	// Point
-	p := G.Mul(big.NewInt(1234))
-	b, err := json.Marshal(p)
-	require.Nil(t, err)
-	assert.Equal(t,
-		`{"x":"102884003323827292915668239759940053105992008087520207150474896054185180420338","y":"49384988101491619794462775601349526588349137780292274540231125201115197157452"}`, //nolint:lll
-		string(b))
-
-	var p2 *Point
-	err = json.Unmarshal(b, &p2)
-	require.Nil(t, err)
-	assert.Equal(t, p, p2)
-
-	// PublicKey
-	pk := PublicKey(*p)
-	b, err = json.Marshal(pk)
-	require.Nil(t, err)
-	assert.Equal(t,
-		`{"x":"102884003323827292915668239759940053105992008087520207150474896054185180420338","y":"49384988101491619794462775601349526588349137780292274540231125201115197157452"}`, //nolint:lll
-		string(b))
-
-	var pk2 PublicKey
-	err = json.Unmarshal(b, &pk2)
-	require.Nil(t, err)
-	assert.Equal(t, pk, pk2)
-
-	// Signature
-	sig := Signature{
-		S: big.NewInt(9876),
-		F: p,
-	}
-	b, err = json.Marshal(sig)
-	require.Nil(t, err)
-	assert.Equal(t,
-		`{"s":"9876","f":{"x":"102884003323827292915668239759940053105992008087520207150474896054185180420338","y":"49384988101491619794462775601349526588349137780292274540231125201115197157452"}}`, //nolint:lll
-		string(b))
-
-	var sig2 Signature
-	err = json.Unmarshal(b, &sig2)
-	require.Nil(t, err)
-	assert.Equal(t, sig, sig2)
 }
