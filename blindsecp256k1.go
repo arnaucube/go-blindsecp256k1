@@ -12,6 +12,7 @@ package blindsecp256k1
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
@@ -27,6 +28,13 @@ var (
 
 	// N represents the order of G of secp256k1
 	N *big.Int = btcec.S256().N
+
+	// B (from y^2 = x^3 + B)
+	B *big.Int = btcec.S256().B
+
+	// Q = (P+1)/4
+	Q = new(big.Int).Div(new(big.Int).Add(btcec.S256().P,
+		big.NewInt(1)), big.NewInt(4))
 )
 
 // Point represents a point on the secp256k1 curve
@@ -51,6 +59,147 @@ func (p *Point) Mul(scalar *big.Int) *Point {
 		X: x,
 		Y: y,
 	}
+}
+
+func (p *Point) Compress() [33]byte {
+	xBytes := p.X.Bytes()
+	sign := byte(0)
+	if isOdd(p.Y) {
+		sign = byte(1)
+	}
+	var b [33]byte
+	copy(b[32-len(xBytes):32], xBytes)
+	b[32] = sign
+	return b
+}
+
+func isOdd(b *big.Int) bool {
+	return b.Bit(0) != 0
+}
+
+func squareMul(r, x *big.Int, bit bool) *big.Int {
+	// r = new(big.Int).Mul(r, r) // r^2
+	r = new(big.Int).Exp(r, big.NewInt(2), N)
+	if bit {
+		r = new(big.Int).Mul(r, x)
+	}
+	return new(big.Int).Mod(r, N)
+}
+
+// https://en.wikipedia.org/wiki/Exponentiation_by_squaring
+func sqrtQ(x *big.Int) *big.Int {
+	// xBytes := x.Bytes()
+	qBytes := Q.Bytes()
+	r := big.NewInt(1)
+	// fmt.Println(hex.EncodeToString(qBytes))
+	for _, b := range qBytes {
+		// fmt.Printf("%d, %x %d\n", i, b, r)
+		// fmt.Printf("%x %s\n", b, r.String())
+		switch b {
+		// Most common case, where all 8 bits are set.
+		case 0xff:
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			// fmt.Printf("%x %s\n", b, r.String())
+
+		// First byte of Q (0x3f), where all but the top two bits are
+		// set. Note that this case only applies six operations, since
+		// the highest bit of Q resides in bit six of the first byte. We
+		// ignore the first two bits, since squaring for these bits will
+		// result in an invalid result. We forgo squaring f before the
+		// first multiply, since 1^2 = 1.
+		case 0x3f:
+			r = new(big.Int).Mul(r, x)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+
+		// Byte 28 of Q (0xbf), where only bit 7 is unset.
+		case 0xbf:
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+
+		// Byte 31 of Q (0x0c), where only bits 3 and 4 are set.
+		default:
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, true)
+			r = squareMul(r, x, false)
+			r = squareMul(r, x, false)
+		}
+	}
+	return r
+}
+
+// https://bitcointalk.org/index.php?topic=162805.msg1712294#msg1712294
+// func (p *Point) Decompress(b [33]byte) error {
+func Decompress(b [33]byte) (*Point, error) {
+	fmt.Println(b)
+	x := new(big.Int).SetBytes(b[:32])
+	fmt.Println(x)
+	var sign bool
+	if b[32] == byte(1) {
+		sign = true
+	}
+
+	// y2 = x3+ ax2 + b (where A==0, B==7)
+
+	// compute x^3 + B mod p
+	x3 := new(big.Int).Mul(x, x)
+	x3 = new(big.Int).Mul(x3, x)
+	// x3 := new(big.Int).Exp(x, big.NewInt(3), N)
+	x3 = new(big.Int).Add(x3, B)
+	x3 = new(big.Int).Mod(x3, N)
+
+	// sqrt mod p of x^3 + B
+	fmt.Println("x3", x3)
+	y := new(big.Int).ModSqrt(x3, N)
+	// y := sqrtQ(x3)
+	if y == nil {
+		return nil, fmt.Errorf("not sqrt mod of x^3")
+	}
+	fmt.Println("y", y)
+	fmt.Println("y", new(big.Int).Sub(N, y))
+	fmt.Println("y", new(big.Int).Mod(new(big.Int).Neg(y), N))
+	if sign != isOdd(y) {
+		y = new(big.Int).Sub(N, y)
+		// TODO check if needed Mod
+	}
+
+	// check that y is a square root of x^3 + B
+	y2 := new(big.Int).Mul(y, y)
+	y2 = new(big.Int).Mod(y2, N)
+	if !bytes.Equal(y2.Bytes(), x3.Bytes()) {
+		return nil, fmt.Errorf("invalid square root")
+	}
+
+	if sign != isOdd(y) {
+		return nil, fmt.Errorf("sign does not match oddness")
+	}
+
+	p := &Point{X: x, Y: y}
+	// p = &Point{}
+	// p.X = x
+	// p.Y = y
+	// fmt.Println("I", p.X, p.Y)
+	return p, nil
 }
 
 // WIP
