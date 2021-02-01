@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,4 +92,17 @@ func TestBytes(t *testing.T) {
 	sig2, err := NewSignatureFromBytes(b)
 	assert.Nil(t, err)
 	assert.Equal(t, &sig, sig2)
+}
+
+func TestImportECDSApubKey(t *testing.T) {
+	// Generate an ECDSA key
+	k, err := crypto.GenerateKey()
+	assert.Nil(t, err)
+	// Import the ECDSA Public key bytes into a PublicKey type
+	pk, err := NewPublicKeyFromECDSA(crypto.FromECDSAPub(&k.PublicKey))
+	assert.Nil(t, err)
+	// Set the ECDSA Private key point as a blindsecp256k1 PrivateKey type
+	bk := PrivateKey(*k.D)
+	// Compare both public keys
+	assert.Equal(t, bk.Public().Bytes(), pk.Bytes())
 }
