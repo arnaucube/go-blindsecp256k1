@@ -157,6 +157,7 @@ func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
 	// s = a s' + b
 	as := new(big.Int).Mul(u.A, sBlind)
 	s := new(big.Int).Add(as, u.B)
+	s = new(big.Int).Mod(s, N)
 
 	return &Signature{
 		S: s,

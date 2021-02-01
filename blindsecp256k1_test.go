@@ -25,6 +25,10 @@ func TestFlow(t *testing.T) {
 
 	// user: unblinds the blinded signature
 	sig := Unblind(sBlind, msg, userSecretData)
+	sigB := sig.Bytes()
+	sig2, err := NewSignatureFromBytes(sigB)
+	assert.Nil(t, err)
+	assert.Equal(t, sig, sig2)
 
 	// signature can be verified with signer PublicKey
 	verified := Verify(msg, sig, signerPubK)

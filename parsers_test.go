@@ -92,6 +92,23 @@ func TestBytes(t *testing.T) {
 	sig2, err := NewSignatureFromBytes(b)
 	assert.Nil(t, err)
 	assert.Equal(t, &sig, sig2)
+
+	// Signature with bigger values
+	s, ok := new(big.Int).SetString("43744879514016998261043792362491545206150700367692876136431010903034023684055", 10) //nolint:lll
+	require.True(t, ok)
+	x, ok := new(big.Int).SetString("56183217574518331862027285308947626162625485037257226169003339923450551228164", 10) //nolint:lll
+	require.True(t, ok)
+	y, ok := new(big.Int).SetString("62825693913681695979055350889339417157462875026935818721506450621762231021976", 10) //nolint:lll
+	require.True(t, ok)
+	sig = Signature{
+		S: s,
+		F: &Point{X: x, Y: y},
+	}
+	b = sig.Bytes()
+	assert.Equal(t, "d7a75050259cc06415f19bde5460a58325e3050806ba949d9ac9728b71b9b6600457ba001981781ed31acafed3d1e82c2ad53d08e3f293eab2f199ed0193367c98311f1894598c91f10fe415ba4a6d04e1351d07430631c7decdbbdb2615e68a", hex.EncodeToString(b)) //nolint:lll
+	sig2, err = NewSignatureFromBytes(b)
+	assert.Nil(t, err)
+	assert.Equal(t, &sig, sig2)
 }
 
 func TestImportECDSApubKey(t *testing.T) {
