@@ -24,7 +24,7 @@ func TestFlow(t *testing.T) {
 	sBlind := sk.BlindSign(msgBlinded, k)
 
 	// user: unblinds the blinded signature
-	sig := Unblind(sBlind, msg, userSecretData)
+	sig := Unblind(sBlind, userSecretData)
 
 	// signature can be verified with signer PublicKey (Q)
 	verified := Verify(msg, sig, signerPubK)

@@ -24,7 +24,7 @@ func TestFlow(t *testing.T) {
 	sBlind := sk.BlindSign(msgBlinded, k)
 
 	// user: unblinds the blinded signature
-	sig := Unblind(sBlind, msg, userSecretData)
+	sig := Unblind(sBlind, userSecretData)
 	sigB := sig.Bytes()
 	sig2, err := NewSignatureFromBytes(sigB)
 	assert.Nil(t, err)

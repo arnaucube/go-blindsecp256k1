@@ -112,8 +112,8 @@ type Signature struct {
 }
 
 // Unblind performs the unblinding operation of the blinded signature for the
-// given message m and the UserSecretData
-func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
+// given and the UserSecretData
+func Unblind(sBlind *big.Int, u *UserSecretData) *Signature {
 	// s = b^-1 s' + c
 	binv := new(big.Int).ModInverse(u.B, blindsecp256k1.N)
 	bs := new(big.Int).Mul(binv, sBlind)

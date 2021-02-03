@@ -81,14 +81,12 @@ func blindv0(this js.Value, values []js.Value) interface{} {
 
 func unblindv0(this js.Value, values []js.Value) interface{} {
 	sBlindStr := values[0].String()
-	mStr := values[1].String()
-	uBStr := values[2].String()
-	uCStr := values[3].String()
-	uFxStr := values[4].String()
-	uFyStr := values[5].String()
+	uBStr := values[1].String()
+	uCStr := values[2].String()
+	uFxStr := values[3].String()
+	uFyStr := values[4].String()
 
 	sBlind := stringToBigInt(sBlindStr)
-	m := stringToBigInt(mStr)
 	uB := stringToBigInt(uBStr)
 	uC := stringToBigInt(uCStr)
 	uFx := stringToBigInt(uFxStr)
@@ -106,7 +104,7 @@ func unblindv0(this js.Value, values []js.Value) interface{} {
 		F: uF,
 	}
 
-	sig := blindsecp256k1v0.Unblind(sBlind, m, u)
+	sig := blindsecp256k1v0.Unblind(sBlind, u)
 
 	r := make(map[string]interface{})
 	r["s"] = sig.S.String()
@@ -174,14 +172,12 @@ func blind(this js.Value, values []js.Value) interface{} {
 
 func unblind(this js.Value, values []js.Value) interface{} {
 	sBlindStr := values[0].String()
-	mStr := values[1].String()
-	uAStr := values[2].String()
-	uBStr := values[3].String()
-	uFxStr := values[4].String()
-	uFyStr := values[5].String()
+	uAStr := values[1].String()
+	uBStr := values[2].String()
+	uFxStr := values[3].String()
+	uFyStr := values[4].String()
 
 	sBlind := stringToBigInt(sBlindStr)
-	m := stringToBigInt(mStr)
 	uA := stringToBigInt(uAStr)
 	uB := stringToBigInt(uBStr)
 	uFx := stringToBigInt(uFxStr)
@@ -198,7 +194,7 @@ func unblind(this js.Value, values []js.Value) interface{} {
 		F: uF,
 	}
 
-	sig := blindsecp256k1.Unblind(sBlind, m, u)
+	sig := blindsecp256k1.Unblind(sBlind, u)
 
 	r := make(map[string]interface{})
 	r["s"] = sig.S.String()

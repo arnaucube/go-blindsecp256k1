@@ -108,6 +108,7 @@ func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) *big.Int {
 	sBlind := new(big.Int).Add(
 		new(big.Int).Mul(sk.BigInt(), mBlinded),
 		k)
+	sBlind = new(big.Int).Mod(sBlind, N)
 	return sBlind
 }
 
@@ -141,6 +142,7 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
 	hBytes := crypto.Keccak256(m.Bytes())
 	h := new(big.Int).SetBytes(hBytes)
 	mBlinded := new(big.Int).Mul(ainvrx, h)
+	mBlinded = new(big.Int).Mod(mBlinded, N)
 
 	return mBlinded, u
 }
@@ -152,8 +154,8 @@ type Signature struct {
 }
 
 // Unblind performs the unblinding operation of the blinded signature for the
-// given message m and the UserSecretData
-func Unblind(sBlind, m *big.Int, u *UserSecretData) *Signature {
+// given the UserSecretData
+func Unblind(sBlind *big.Int, u *UserSecretData) *Signature {
 	// s = a s' + b
 	as := new(big.Int).Mul(u.A, sBlind)
 	s := new(big.Int).Add(as, u.B)
@@ -181,7 +183,7 @@ func Verify(m *big.Int, s *Signature, q *PublicKey) bool {
 
 	right := s.F.Add(rxhG)
 
-	// check sG == R + rx h(m) G (where R in this code is F)
+	// check sG == R + rx h(m) Q (where R in this code is F)
 	if bytes.Equal(sG.X.Bytes(), right.X.Bytes()) &&
 		bytes.Equal(sG.Y.Bytes(), right.Y.Bytes()) {
 		return true
