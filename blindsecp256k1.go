@@ -12,11 +12,19 @@ package blindsecp256k1
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"math/big"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// TMP
+// const (
+//         // MinBigIntBytesLen defines the minimum bytes length of the minimum
+//         // accepted value for the checked *big.Int
+//         MinBigIntBytesLen = 20 * 8
+// )
 
 var (
 	// G represents the base point of secp256k1
@@ -27,6 +35,8 @@ var (
 
 	// N represents the order of G of secp256k1
 	N *big.Int = btcec.S256().N
+
+	zero *big.Int = big.NewInt(0)
 )
 
 // Point represents a point on the secp256k1 curve
@@ -51,6 +61,19 @@ func (p *Point) Mul(scalar *big.Int) *Point {
 		X: x,
 		Y: y,
 	}
+}
+
+func (p *Point) isValid() error {
+	if !btcec.S256().IsOnCurve(p.X, p.Y) {
+		return fmt.Errorf("Point is not on secp256k1")
+	}
+
+	if bytes.Equal(p.X.Bytes(), zero.Bytes()) &&
+		bytes.Equal(p.Y.Bytes(), zero.Bytes()) {
+		return fmt.Errorf("Point (%s, %s) can not be (0, 0)",
+			p.X.String(), p.Y.String())
+	}
+	return nil
 }
 
 // WIP
@@ -102,27 +125,42 @@ func NewRequestParameters() (*big.Int, *Point) {
 
 // BlindSign performs the blind signature on the given mBlinded using the
 // PrivateKey and the secret k values
-func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) *big.Int {
+func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) (*big.Int, error) {
 	// TODO add pending checks
+	if mBlinded.Cmp(N) != -1 {
+		return nil, fmt.Errorf("mBlinded not inside the finite field")
+	}
+	if bytes.Equal(mBlinded.Bytes(), big.NewInt(0).Bytes()) {
+		return nil, fmt.Errorf("mBlinded can not be 0")
+	}
+	// TMP
+	// if mBlinded.BitLen() < MinBigIntBytesLen {
+	//         return nil, fmt.Errorf("mBlinded too small")
+	// }
+
 	// s' = dm' + k
 	sBlind := new(big.Int).Add(
 		new(big.Int).Mul(sk.BigInt(), mBlinded),
 		k)
 	sBlind = new(big.Int).Mod(sBlind, N)
-	return sBlind
+	return sBlind, nil
 }
 
-// UserSecretData contains the secret values from the User (a, b, c) and the
+// UserSecretData contains the secret values from the User (a, b) and the
 // public F
 type UserSecretData struct {
 	A *big.Int
 	B *big.Int
 
-	F *Point // public (in the paper is R)
+	F *Point // public (in the paper is named R)
 }
 
 // Blind performs the blinding operation on m using signerR parameter
-func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
+func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
+	if !btcec.S256().IsOnCurve(signerR.X, signerR.Y) {
+		return nil, nil, fmt.Errorf("signerR point is not on secp256k1")
+	}
+
 	u := &UserSecretData{}
 	u.A = newRand()
 	u.B = newRand()
@@ -133,6 +171,9 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
 	u.F = aR.Add(bG)
 
 	// TODO check that F != O (point at infinity)
+	if err := u.F.isValid(); err != nil {
+		return nil, nil, err
+	}
 
 	rx := new(big.Int).Mod(u.F.X, N)
 
@@ -144,7 +185,7 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData) {
 	mBlinded := new(big.Int).Mul(ainvrx, h)
 	mBlinded = new(big.Int).Mod(mBlinded, N)
 
-	return mBlinded, u
+	return mBlinded, u, nil
 }
 
 // Signature contains the signature values S & F
@@ -170,6 +211,12 @@ func Unblind(sBlind *big.Int, u *UserSecretData) *Signature {
 // Verify checks the signature of the message m for the given PublicKey
 func Verify(m *big.Int, s *Signature, q *PublicKey) bool {
 	// TODO add pending checks
+	if err := s.F.isValid(); err != nil {
+		return false
+	}
+	if err := q.Point().isValid(); err != nil {
+		return false
+	}
 
 	sG := G.Mul(s.S) // sG
 
