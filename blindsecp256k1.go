@@ -157,8 +157,8 @@ type UserSecretData struct {
 
 // Blind performs the blinding operation on m using signerR parameter
 func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
-	if !btcec.S256().IsOnCurve(signerR.X, signerR.Y) {
-		return nil, nil, fmt.Errorf("signerR point is not on secp256k1")
+	if err := signerR.isValid(); err != nil {
+		return nil, nil, fmt.Errorf("signerR %s", err)
 	}
 
 	u := &UserSecretData{}
@@ -172,7 +172,7 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
 
 	// TODO check that F != O (point at infinity)
 	if err := u.F.isValid(); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("u.F %s", err)
 	}
 
 	rx := new(big.Int).Mod(u.F.X, N)

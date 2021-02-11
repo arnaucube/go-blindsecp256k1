@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,6 +37,28 @@ func TestFlow(t *testing.T) {
 	// signature can be verified with signer PublicKey
 	verified := Verify(msg, sig, signerPubK)
 	assert.True(t, verified)
+}
+
+func TestHashMOddBytes(t *testing.T) {
+	// This test is made with same values than
+	// https://github.com/arnaucube/blindsecp256k1-js to ensure
+	// compatibility
+	mStr := "3024162961766929396601888431330224482373544644288322432261208139289299439809"
+	m, ok := new(big.Int).SetString(mStr, 10)
+	require.True(t, ok)
+	mBytes := m.Bytes()
+
+	hBytes := crypto.Keccak256(mBytes[3:])
+	h := new(big.Int).SetBytes(hBytes)
+	assert.Equal(t,
+		"57523339312508913023232057765773019244858443678197951618720342803494056599369",
+		h.String())
+
+	hBytes = crypto.Keccak256(append(mBytes, []byte{0x12, 0x34}...))
+	h = new(big.Int).SetBytes(hBytes)
+	assert.Equal(t,
+		"9697834584560956691445940439424778243200861871421750951058436814122640359156",
+		h.String())
 }
 
 // func newBigIntWithBitLen(n int) *big.Int {
