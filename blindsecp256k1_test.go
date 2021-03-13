@@ -1,6 +1,7 @@
 package blindsecp256k1
 
 import (
+	"encoding/hex"
 	"math/big"
 	"testing"
 
@@ -84,3 +85,48 @@ func TestHashMOddBytes(t *testing.T) {
 //         _, err = sk.BlindSign(mBlinded, k)
 //         assert.Equal(t, "mBlinded too small", err.Error())
 // }
+
+func TestPointCompressDecompress(t *testing.T) {
+	p := G
+	b := p.Compress()
+	assert.Equal(t,
+		"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
+		hex.EncodeToString(b[:]))
+	p2, err := DecompressPoint(b)
+	require.Nil(t, err)
+	assert.Equal(t, p, p2)
+
+	for i := 2; i < 1000; i++ {
+		p := G.Mul(big.NewInt(int64(i)))
+		b := p.Compress()
+		assert.Equal(t, 33, len(b))
+
+		p2, err := DecompressPoint(b)
+		require.Nil(t, err)
+		assert.Equal(t, p, p2)
+	}
+}
+
+func BenchmarkCompressDecompress(b *testing.B) {
+	const n = 256
+	var points [n]*Point
+	var compPoints [n][33]byte
+
+	for i := 0; i < n; i++ {
+		points[i] = G.Mul(big.NewInt(int64(i)))
+	}
+	for i := 0; i < n; i++ {
+		compPoints[i] = points[i].Compress()
+	}
+
+	b.Run("Compress", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = points[i%n].Compress()
+		}
+	})
+	b.Run("DecompressPoint", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = DecompressPoint(compPoints[i%n])
+		}
+	})
+}
