@@ -86,7 +86,7 @@ func (p *Point) isValid() error {
 	return nil
 }
 
-// Compress packs a Point to a byte array of 33 bytes
+// Compress packs a Point to a byte array of 33 bytes, encoded in little-endian.
 func (p *Point) Compress() [33]byte {
 	xBytes := p.X.Bytes()
 	odd := byte(0)
@@ -262,6 +262,30 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
 type Signature struct {
 	S *big.Int
 	F *Point
+}
+
+// Compress packs a Signature to a byte array of 65 bytes, encoded in
+// little-endian.
+func (s *Signature) Compress() [65]byte {
+	var b [65]byte
+	sBytes := s.S.Bytes()
+	fBytes := s.F.Compress()
+	copy(b[:32], swapEndianness(sBytes))
+	copy(b[32:], fBytes[:])
+	return b
+}
+
+// DecompressSignature unpacks a Signature from the given byte array of 65 bytes
+func DecompressSignature(b [65]byte) (*Signature, error) {
+	s := new(big.Int).SetBytes(swapEndianness(b[:32]))
+	var fBytes [33]byte
+	copy(fBytes[:], b[32:])
+	f, err := DecompressPoint(fBytes)
+	if err != nil {
+		return nil, err
+	}
+	sig := &Signature{S: s, F: f}
+	return sig, nil
 }
 
 // Unblind performs the unblinding operation of the blinded signature for the

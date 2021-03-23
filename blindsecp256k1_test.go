@@ -107,6 +107,51 @@ func TestPointCompressDecompress(t *testing.T) {
 	}
 }
 
+func TestSignatureCompressDecompress(t *testing.T) {
+	f := G
+	sig := &Signature{
+		S: big.NewInt(1),
+		F: f,
+	}
+	b := sig.Compress()
+	assert.Equal(t,
+		"01000000000000000000000000000000000000000000000000000000000000007"+
+			"9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
+		hex.EncodeToString(b[:]))
+	sig2, err := DecompressSignature(b)
+	require.Nil(t, err)
+	assert.Equal(t, sig, sig2)
+
+	f = G
+	sig = &Signature{
+		S: Q,
+		F: f,
+	}
+	b = sig.Compress()
+	assert.Equal(t,
+		"0cffffbfffffffffffffffffffffffffffffffffffffffffffffffffffffff3f7"+
+			"9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
+		hex.EncodeToString(b[:]))
+	sig2, err = DecompressSignature(b)
+	require.Nil(t, err)
+	require.Equal(t, sig, sig2)
+
+	for i := 2; i < 10; i++ {
+		s := new(big.Int).Mod(new(big.Int).Mul(Q, big.NewInt(int64(i))), P)
+		f := G.Mul(big.NewInt(int64(i)))
+		sig := &Signature{
+			S: s,
+			F: f,
+		}
+		b := sig.Compress()
+		assert.Equal(t, 65, len(b))
+
+		sig2, err := DecompressSignature(b)
+		require.Nil(t, err)
+		assert.Equal(t, sig, sig2)
+	}
+}
+
 func BenchmarkCompressDecompress(b *testing.B) {
 	const n = 256
 	var points [n]*Point

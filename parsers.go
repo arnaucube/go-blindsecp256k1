@@ -65,9 +65,9 @@ func (p *Point) Bytes() []byte {
 // little-endian.
 func NewPointFromBytes(b []byte) (*Point, error) {
 	if len(b) != 64 { //nolint:gomnd
-		return nil,
-			fmt.Errorf("Can not parse bytes to Point, expected byte array of length %d, current %d",
-				64, len(b))
+		return nil, fmt.Errorf("Can not parse bytes to Point,"+
+			" expected byte array of length %d, current %d",
+			64, len(b))
 	}
 	p := &Point{}
 	p.X = new(big.Int).SetBytes(swapEndianness(b[:32]))
@@ -193,7 +193,8 @@ func (sig *Signature) Bytes() []byte {
 func NewSignatureFromBytes(b []byte) (*Signature, error) {
 	if len(b) != 96 { //nolint:gomnd
 		return nil,
-			fmt.Errorf("Can not parse bytes to Signature, expected byte array of length %d, current %d",
+			fmt.Errorf("Can not parse bytes to Signature,"+
+				" expected byte array of length %d, current %d",
 				96, len(b))
 	}
 	s := new(big.Int).SetBytes(swapEndianness(b[:32]))
