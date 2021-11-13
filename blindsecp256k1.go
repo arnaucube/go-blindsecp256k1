@@ -11,11 +11,11 @@ package blindsecp256k1
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -28,26 +28,12 @@ import (
 
 var (
 	zero *big.Int = big.NewInt(0)
-
-	// B (from y^2 = x^3 + B)
-	B *big.Int = btcec.S256().B
-
-	// P represents the secp256k1 finite field
-	P *big.Int = btcec.S256().P
-
-	// Q = (P+1)/4
-	Q = new(big.Int).Div(new(big.Int).Add(P,
-		big.NewInt(1)), big.NewInt(4)) // nolint:gomnd
-
-	// G represents the base point of secp256k1
-	G *Point = &Point{
-		X: btcec.S256().Gx,
-		Y: btcec.S256().Gy,
-	}
-
-	// N represents the order of G of secp256k1
-	N *big.Int = btcec.S256().N
 )
+
+// Curve is a curve wrapper that works with Point structs
+type Curve struct {
+	c elliptic.Curve
+}
 
 // Point represents a point on the secp256k1 curve
 type Point struct {
@@ -56,8 +42,8 @@ type Point struct {
 }
 
 // Add performs the Point addition
-func (p *Point) Add(q *Point) *Point {
-	x, y := btcec.S256().Add(p.X, p.Y, q.X, q.Y)
+func (c Curve) Add(p, q *Point) *Point {
+	x, y := c.c.Add(p.X, p.Y, q.X, q.Y)
 	return &Point{
 		X: x,
 		Y: y,
@@ -65,17 +51,17 @@ func (p *Point) Add(q *Point) *Point {
 }
 
 // Mul performs the Point scalar multiplication
-func (p *Point) Mul(scalar *big.Int) *Point {
-	x, y := btcec.S256().ScalarMult(p.X, p.Y, scalar.Bytes())
+func (c Curve) Mul(p *Point, scalar *big.Int) *Point {
+	x, y := c.c.ScalarMult(p.X, p.Y, scalar.Bytes())
 	return &Point{
 		X: x,
 		Y: y,
 	}
 }
 
-func (p *Point) isValid() error {
-	if !btcec.S256().IsOnCurve(p.X, p.Y) {
-		return fmt.Errorf("Point is not on secp256k1")
+func (c Curve) isValid(p *Point) error {
+	if !c.c.IsOnCurve(p.X, p.Y) {
+		return fmt.Errorf("Point is not on curve %s", c.c.Params().Name)
 	}
 
 	if bytes.Equal(p.X.Bytes(), zero.Bytes()) &&
@@ -105,7 +91,7 @@ func isOdd(b *big.Int) bool {
 
 // DecompressPoint unpacks a Point from the given byte array of 33 bytes
 // https://bitcointalk.org/index.php?topic=162805.msg1712294#msg1712294
-func DecompressPoint(b [33]byte) (*Point, error) {
+func DecompressPoint(curv elliptic.Curve, b [33]byte) (*Point, error) {
 	x := new(big.Int).SetBytes(b[:32])
 	var odd bool
 	if b[32] == byte(1) {
@@ -113,6 +99,9 @@ func DecompressPoint(b [33]byte) (*Point, error) {
 	}
 
 	// secp256k1: y2 = x3+ ax2 + b (where A==0, B==7)
+	params := curv.Params()
+	B := params.B
+	P := params.P
 
 	// compute x^3 + B mod p
 	x3 := new(big.Int).Mul(x, x)
@@ -147,14 +136,14 @@ func DecompressPoint(b [33]byte) (*Point, error) {
 }
 
 // WIP
-func newRand() *big.Int {
+func newRand(curv elliptic.Curve) *big.Int {
 	var b [32]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
 		panic(err)
 	}
 	bi := new(big.Int).SetBytes(b[:])
-	return new(big.Int).Mod(bi, N)
+	return new(big.Int).Mod(bi, curv.Params().N)
 }
 
 // PrivateKey represents the signer's private key
@@ -164,8 +153,8 @@ type PrivateKey big.Int
 type PublicKey Point
 
 // NewPrivateKey returns a new random private key
-func NewPrivateKey() *PrivateKey {
-	k := newRand()
+func NewPrivateKey(curv elliptic.Curve) *PrivateKey {
+	k := newRand(curv)
 	sk := PrivateKey(*k)
 	return &sk
 }
@@ -176,9 +165,16 @@ func (sk *PrivateKey) BigInt() *big.Int {
 }
 
 // Public returns the PublicKey from the PrivateKey
-func (sk *PrivateKey) Public() *PublicKey {
-	Q := G.Mul(sk.BigInt())
-	pk := PublicKey(*Q)
+func (sk *PrivateKey) Public(curv elliptic.Curve) *PublicKey {
+	// TODO change impl to use directly X, Y instead
+	// of Point wrapper. In order to have the impl more close to go interface
+	c := Curve{curv}
+	G := &Point{
+		X: c.c.Params().Gx,
+		Y: c.c.Params().Gy,
+	}
+	q := c.Mul(G, sk.BigInt())
+	pk := PublicKey{X: q.X, Y: q.Y}
 	return &pk
 }
 
@@ -188,16 +184,24 @@ func (pk *PublicKey) Point() *Point {
 }
 
 // NewRequestParameters returns a new random k (secret) & R (public) parameters
-func NewRequestParameters() (*big.Int, *Point) {
-	k := newRand()
-	return k, G.Mul(k) // R = kG
+func NewRequestParameters(curv elliptic.Curve) (*big.Int, *Point) {
+	k := newRand(curv)
+	G := &Point{
+		X: curv.Params().Gx,
+		Y: curv.Params().Gy,
+	}
+	// R = kG
+	r := Curve{curv}.Mul(G, k)
+	return k, r
 }
 
 // BlindSign performs the blind signature on the given mBlinded using the
 // PrivateKey and the secret k values
-func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) (*big.Int, error) {
+func (sk *PrivateKey) BlindSign(curv elliptic.Curve, mBlinded *big.Int, k *big.Int) (*big.Int, error) {
+	c := Curve{curv}
+	n := c.c.Params().N
 	// TODO add pending checks
-	if mBlinded.Cmp(N) != -1 {
+	if mBlinded.Cmp(n) != -1 {
 		return nil, fmt.Errorf("mBlinded not inside the finite field")
 	}
 	if bytes.Equal(mBlinded.Bytes(), big.NewInt(0).Bytes()) {
@@ -212,7 +216,7 @@ func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) (*big.Int, error)
 	sBlind := new(big.Int).Add(
 		new(big.Int).Mul(sk.BigInt(), mBlinded),
 		k)
-	sBlind = new(big.Int).Mod(sBlind, N)
+	sBlind = new(big.Int).Mod(sBlind, n)
 	return sBlind, nil
 }
 
@@ -226,34 +230,43 @@ type UserSecretData struct {
 }
 
 // Blind performs the blinding operation on m using signerR parameter
-func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
-	if err := signerR.isValid(); err != nil {
+func Blind(curv elliptic.Curve, m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
+	c := Curve{curv}
+	if err := c.isValid(signerR); err != nil {
 		return nil, nil, fmt.Errorf("signerR %s", err)
 	}
 
+	// TODO check if curv==signerR.curv
+	// TODO (once the Point abstraction is removed) check that signerR is
+	// in the curve
+	G := &Point{
+		X: curv.Params().Gx,
+		Y: curv.Params().Gy,
+	}
+
 	u := &UserSecretData{}
-	u.A = newRand()
-	u.B = newRand()
+	u.A = newRand(curv)
+	u.B = newRand(curv)
 
 	// (R) F = aR' + bG
-	aR := signerR.Mul(u.A)
-	bG := G.Mul(u.B)
-	u.F = aR.Add(bG)
+	aR := c.Mul(signerR, u.A)
+	bG := c.Mul(G, u.B)
+	u.F = c.Add(aR, bG)
 
 	// TODO check that F != O (point at infinity)
-	if err := u.F.isValid(); err != nil {
+	if err := c.isValid(u.F); err != nil {
 		return nil, nil, fmt.Errorf("u.F %s", err)
 	}
 
-	rx := new(big.Int).Mod(u.F.X, N)
+	rx := new(big.Int).Mod(u.F.X, curv.Params().N)
 
 	// m' = a^-1 rx h(m)
-	ainv := new(big.Int).ModInverse(u.A, N)
+	ainv := new(big.Int).ModInverse(u.A, curv.Params().N)
 	ainvrx := new(big.Int).Mul(ainv, rx)
 	hBytes := crypto.Keccak256(m.Bytes())
 	h := new(big.Int).SetBytes(hBytes)
 	mBlinded := new(big.Int).Mul(ainvrx, h)
-	mBlinded = new(big.Int).Mod(mBlinded, N)
+	mBlinded = new(big.Int).Mod(mBlinded, curv.Params().N)
 
 	return mBlinded, u, nil
 }
@@ -276,11 +289,11 @@ func (s *Signature) Compress() [65]byte {
 }
 
 // DecompressSignature unpacks a Signature from the given byte array of 65 bytes
-func DecompressSignature(b [65]byte) (*Signature, error) {
+func DecompressSignature(curve elliptic.Curve, b [65]byte) (*Signature, error) {
 	s := new(big.Int).SetBytes(swapEndianness(b[:32]))
 	var fBytes [33]byte
 	copy(fBytes[:], b[32:])
-	f, err := DecompressPoint(fBytes)
+	f, err := DecompressPoint(curve, fBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -290,11 +303,11 @@ func DecompressSignature(b [65]byte) (*Signature, error) {
 
 // Unblind performs the unblinding operation of the blinded signature for the
 // given the UserSecretData
-func Unblind(sBlind *big.Int, u *UserSecretData) *Signature {
+func Unblind(curv elliptic.Curve, sBlind *big.Int, u *UserSecretData) *Signature {
 	// s = a s' + b
 	as := new(big.Int).Mul(u.A, sBlind)
 	s := new(big.Int).Add(as, u.B)
-	s = new(big.Int).Mod(s, N)
+	s = new(big.Int).Mod(s, curv.Params().N)
 
 	return &Signature{
 		S: s,
@@ -303,26 +316,31 @@ func Unblind(sBlind *big.Int, u *UserSecretData) *Signature {
 }
 
 // Verify checks the signature of the message m for the given PublicKey
-func Verify(m *big.Int, s *Signature, q *PublicKey) bool {
+func Verify(curv elliptic.Curve, m *big.Int, s *Signature, q *PublicKey) bool {
 	// TODO add pending checks
-	if err := s.F.isValid(); err != nil {
+	c := Curve{curv}
+	if err := c.isValid(s.F); err != nil {
 		return false
 	}
-	if err := q.Point().isValid(); err != nil {
+	if err := c.isValid(q.Point()); err != nil {
 		return false
 	}
 
-	sG := G.Mul(s.S) // sG
+	G := &Point{
+		X: curv.Params().Gx,
+		Y: curv.Params().Gy,
+	}
+	sG := c.Mul(G, s.S) // sG
 
 	hBytes := crypto.Keccak256(m.Bytes())
 	h := new(big.Int).SetBytes(hBytes)
 
-	rx := new(big.Int).Mod(s.F.X, N)
+	rx := new(big.Int).Mod(s.F.X, curv.Params().N)
 	rxh := new(big.Int).Mul(rx, h)
 	// rxhG := G.Mul(rxh) // originally the paper uses G
-	rxhG := q.Point().Mul(rxh)
+	rxhG := c.Mul(q.Point(), rxh)
 
-	right := s.F.Add(rxhG)
+	right := c.Add(s.F, rxhG)
 
 	// check sG == R + rx h(m) Q (where R in this code is F)
 	if bytes.Equal(sG.X.Bytes(), right.X.Bytes()) &&

@@ -6,14 +6,21 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMarshalers(t *testing.T) {
+	curv := btcec.S256()
+	G := &Point{
+		X: curv.Params().Gx,
+		Y: curv.Params().Gy,
+	}
+
 	// Point
-	p := G.Mul(big.NewInt(1234))
+	p := Curve{curv}.Mul(G, big.NewInt(1234))
 	b, err := json.Marshal(p)
 	require.Nil(t, err)
 	assert.Equal(t,
@@ -56,6 +63,12 @@ func TestMarshalers(t *testing.T) {
 }
 
 func TestBytes(t *testing.T) {
+	curv := btcec.S256()
+	G := &Point{
+		X: curv.Params().Gx,
+		Y: curv.Params().Gy,
+	}
+
 	// Point
 	p := &Point{
 		X: big.NewInt(3),
@@ -67,7 +80,7 @@ func TestBytes(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, p, p2)
 
-	p = G.Mul(big.NewInt(1234))
+	p = Curve{curv}.Mul(G, big.NewInt(1234))
 	b = p.Bytes()
 	assert.Equal(t, "f258163f65f65865a79a4279e2ebabb5a57b85501dd4b381d1dc605c434876e34c308bd3f18f062d5cc07f34948ced82f9a76f9c3e65ae64f158412da8e92e6d", hex.EncodeToString(b)) //nolint:lll
 	p2, err = NewPointFromBytes(b)
@@ -112,6 +125,8 @@ func TestBytes(t *testing.T) {
 }
 
 func TestImportECDSApubKey(t *testing.T) {
+	curv := btcec.S256()
+
 	// Generate an ECDSA key
 	k, err := crypto.GenerateKey()
 	assert.Nil(t, err)
@@ -121,5 +136,5 @@ func TestImportECDSApubKey(t *testing.T) {
 	// Set the ECDSA Private key point as a blindsecp256k1 PrivateKey type
 	bk := PrivateKey(*k.D)
 	// Compare both public keys
-	assert.Equal(t, bk.Public().Bytes(), pk.Bytes())
+	assert.Equal(t, bk.Public(curv).Bytes(), pk.Bytes())
 }

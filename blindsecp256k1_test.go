@@ -5,38 +5,44 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// TODO abstract the test to work with any curve, and be
+// called from a test that testes all the tests with the
+// main curves
+
 func TestFlow(t *testing.T) {
+	curv := btcec.S256()
 	// signer: create new signer key pair
-	sk := NewPrivateKey()
-	signerPubK := sk.Public()
+	sk := NewPrivateKey(curv)
+	signerPubK := sk.Public(curv)
 
 	// signer: when user requests new R parameter to blind a new msg,
 	// create new signerR (public) with its secret k
-	k, signerR := NewRequestParameters()
+	k, signerR := NewRequestParameters(curv)
 
 	// user: blinds the msg using signer's R
 	msg := new(big.Int).SetBytes([]byte("test"))
-	msgBlinded, userSecretData, err := Blind(msg, signerR)
+	msgBlinded, userSecretData, err := Blind(curv, msg, signerR)
 	require.Nil(t, err)
 
 	// signer: signs the blinded message using its private key & secret k
-	sBlind, err := sk.BlindSign(msgBlinded, k)
+	sBlind, err := sk.BlindSign(curv, msgBlinded, k)
 	require.Nil(t, err)
 
 	// user: unblinds the blinded signature
-	sig := Unblind(sBlind, userSecretData)
+	sig := Unblind(curv, sBlind, userSecretData)
 	sigB := sig.Bytes()
 	sig2, err := NewSignatureFromBytes(sigB)
 	assert.Nil(t, err)
 	assert.Equal(t, sig, sig2)
 
 	// signature can be verified with signer PublicKey
-	verified := Verify(msg, sig, signerPubK)
+	verified := Verify(curv, msg, sig, signerPubK)
 	assert.True(t, verified)
 }
 
@@ -87,27 +93,44 @@ func TestHashMOddBytes(t *testing.T) {
 // }
 
 func TestPointCompressDecompress(t *testing.T) {
-	p := G
+	curv := btcec.S256()
+	c := Curve{curv}
+
+	G := &Point{
+		X: curv.Gx,
+		Y: curv.Gy,
+	}
+	p := &Point{
+		X: curv.Gx,
+		Y: curv.Gy,
+	}
 	b := p.Compress()
 	assert.Equal(t,
 		"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
 		hex.EncodeToString(b[:]))
-	p2, err := DecompressPoint(b)
+	p2, err := DecompressPoint(curv, b)
 	require.Nil(t, err)
 	assert.Equal(t, p, p2)
 
 	for i := 2; i < 1000; i++ {
-		p := G.Mul(big.NewInt(int64(i)))
+		p := c.Mul(G, big.NewInt(int64(i)))
 		b := p.Compress()
 		assert.Equal(t, 33, len(b))
 
-		p2, err := DecompressPoint(b)
+		p2, err := DecompressPoint(curv, b)
 		require.Nil(t, err)
 		assert.Equal(t, p, p2)
 	}
 }
 
 func TestSignatureCompressDecompress(t *testing.T) {
+	curv := btcec.S256()
+	c := Curve{curv}
+
+	G := &Point{
+		X: curv.Gx,
+		Y: curv.Gy,
+	}
 	f := G
 	sig := &Signature{
 		S: big.NewInt(1),
@@ -118,11 +141,15 @@ func TestSignatureCompressDecompress(t *testing.T) {
 		"01000000000000000000000000000000000000000000000000000000000000007"+
 			"9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
 		hex.EncodeToString(b[:]))
-	sig2, err := DecompressSignature(b)
+	sig2, err := DecompressSignature(curv, b)
 	require.Nil(t, err)
 	assert.Equal(t, sig, sig2)
 
 	f = G
+	P := curv.Params().P
+	// Q = (P+1)/4
+	Q := new(big.Int).Div(new(big.Int).Add(P,
+		big.NewInt(1)), big.NewInt(4)) // nolint:gomnd
 	sig = &Signature{
 		S: Q,
 		F: f,
@@ -132,13 +159,13 @@ func TestSignatureCompressDecompress(t *testing.T) {
 		"0cffffbfffffffffffffffffffffffffffffffffffffffffffffffffffffff3f7"+
 			"9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179800",
 		hex.EncodeToString(b[:]))
-	sig2, err = DecompressSignature(b)
+	sig2, err = DecompressSignature(curv, b)
 	require.Nil(t, err)
 	require.Equal(t, sig, sig2)
 
 	for i := 2; i < 10; i++ {
 		s := new(big.Int).Mod(new(big.Int).Mul(Q, big.NewInt(int64(i))), P)
-		f := G.Mul(big.NewInt(int64(i)))
+		f := c.Mul(G, big.NewInt(int64(i)))
 		sig := &Signature{
 			S: s,
 			F: f,
@@ -146,19 +173,26 @@ func TestSignatureCompressDecompress(t *testing.T) {
 		b := sig.Compress()
 		assert.Equal(t, 65, len(b))
 
-		sig2, err := DecompressSignature(b)
+		sig2, err := DecompressSignature(curv, b)
 		require.Nil(t, err)
 		assert.Equal(t, sig, sig2)
 	}
 }
 
 func BenchmarkCompressDecompress(b *testing.B) {
+	curv := btcec.S256()
+	c := Curve{curv}
+
 	const n = 256
 	var points [n]*Point
 	var compPoints [n][33]byte
+	G := &Point{
+		X: curv.Gx,
+		Y: curv.Gy,
+	}
 
 	for i := 0; i < n; i++ {
-		points[i] = G.Mul(big.NewInt(int64(i)))
+		points[i] = c.Mul(G, big.NewInt(int64(i)))
 	}
 	for i := 0; i < n; i++ {
 		compPoints[i] = points[i].Compress()
@@ -171,7 +205,7 @@ func BenchmarkCompressDecompress(b *testing.B) {
 	})
 	b.Run("DecompressPoint", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = DecompressPoint(compPoints[i%n])
+			_, _ = DecompressPoint(curv, compPoints[i%n])
 		}
 	})
 }
