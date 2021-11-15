@@ -12,15 +12,18 @@ import (
 
 func TestFlow(t *testing.T) {
 	// signer: create new signer key pair
-	sk := NewPrivateKey()
+	sk, err := NewPrivateKey()
+	require.Nil(t, err)
 	signerPubK := sk.Public()
 
 	// signer: when user requests new R parameter to blind a new msg,
 	// create new signerR (public) with its secret k
-	k, signerR := NewRequestParameters()
+	k, signerR, err := NewRequestParameters()
+	require.Nil(t, err)
 
 	// user: blinds the msg using signer's R
-	msg := new(big.Int).SetBytes([]byte("test"))
+	// msg := new(big.Int).SetBytes([]byte("test"))
+	msg := new(big.Int).SetBytes(crypto.Keccak256([]byte("test")))
 	msgBlinded, userSecretData, err := Blind(msg, signerR)
 	require.Nil(t, err)
 
@@ -38,6 +41,18 @@ func TestFlow(t *testing.T) {
 	// signature can be verified with signer PublicKey
 	verified := Verify(msg, sig, signerPubK)
 	assert.True(t, verified)
+}
+
+func TestSmallBlindedMsg(t *testing.T) {
+	sk, err := NewPrivateKey()
+	require.Nil(t, err)
+	k := big.NewInt(1)
+	smallMsgBlinded := big.NewInt(1)
+
+	// try to BlindSign a small value
+	_, err = sk.BlindSign(smallMsgBlinded, k)
+	require.NotNil(t, err)
+	require.Equal(t, "mBlinded error: invalid length, need 32 bytes", err.Error())
 }
 
 func TestHashMOddBytes(t *testing.T) {
@@ -122,7 +137,11 @@ func TestSignatureCompressDecompress(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, sig, sig2)
 
+	// Q = (P+1)/4
+	Q := new(big.Int).Div(new(big.Int).Add(P,
+		big.NewInt(1)), big.NewInt(4)) // nolint:gomnd
 	f = G
+
 	sig = &Signature{
 		S: Q,
 		F: f,

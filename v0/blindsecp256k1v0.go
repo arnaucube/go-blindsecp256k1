@@ -11,31 +11,34 @@ package blindsecp256k1v0
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"math/big"
 
 	"github.com/arnaucube/go-blindsecp256k1"
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 )
 
 // WIP
-func newRand() *big.Int {
-	var b [32]byte
-	_, err := rand.Read(b[:])
+func newRand() (*big.Int, error) {
+	pk, err := ecdsa.GenerateKey(secp256k1.S256(), rand.Reader)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	bi := new(big.Int).SetBytes(b[:])
-	return new(big.Int).Mod(bi, blindsecp256k1.N)
+	return pk.D, nil
 }
 
 // PrivateKey represents the signer's private key
 type PrivateKey big.Int
 
 // NewPrivateKey returns a new random private key
-func NewPrivateKey() *PrivateKey {
-	k := newRand()
+func NewPrivateKey() (*PrivateKey, error) {
+	k, err := newRand()
+	if err != nil {
+		return nil, err
+	}
 	sk := PrivateKey(*k)
-	return &sk
+	return &sk, nil
 }
 
 // BigInt returns a *big.Int representation of the PrivateKey
@@ -51,14 +54,20 @@ func (sk *PrivateKey) Public() *blindsecp256k1.PublicKey {
 }
 
 // NewRequestParameters returns a new random k (secret) & R (public) parameters
-func NewRequestParameters() (*big.Int, *blindsecp256k1.Point) {
-	k := newRand()
-	return k, blindsecp256k1.G.Mul(k) // R = kG
+func NewRequestParameters() (*big.Int, *blindsecp256k1.Point, error) {
+	k, err := newRand()
+	if err != nil {
+		return nil, nil, err
+	}
+	// k, R = kG
+	return k, blindsecp256k1.G.Mul(k), nil
 }
 
 // BlindSign performs the blind signature on the given mBlinded using
 // SignerPrivateData values
 func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) *big.Int {
+	// WARNING missing checks, this package is not updated, use
+	// blindsecp256k1 instead
 	// TODO add pending checks
 	// s' = d(m') + k
 	sBlind := new(big.Int).Add(
@@ -79,11 +88,21 @@ type UserSecretData struct {
 
 // Blind performs the blinding operation on m using SignerPublicData parameters
 func Blind(m *big.Int, signerPubK *blindsecp256k1.PublicKey,
-	signerR *blindsecp256k1.Point) (*big.Int, *UserSecretData) {
+	signerR *blindsecp256k1.Point) (*big.Int, *UserSecretData, error) {
+	var err error
 	u := &UserSecretData{}
-	u.A = newRand()
-	u.B = newRand()
-	u.C = newRand()
+	u.A, err = newRand()
+	if err != nil {
+		return nil, nil, err
+	}
+	u.B, err = newRand()
+	if err != nil {
+		return nil, nil, err
+	}
+	u.C, err = newRand()
+	if err != nil {
+		return nil, nil, err
+	}
 	binv := new(big.Int).ModInverse(u.B, blindsecp256k1.N)
 
 	// F = b^-1 R + a b^-1 Q + c G
@@ -102,7 +121,7 @@ func Blind(m *big.Int, signerPubK *blindsecp256k1.PublicKey,
 	brm := new(big.Int).Mul(br, m)
 	mBlinded := new(big.Int).Add(brm, u.A)
 	mBlinded = new(big.Int).Mod(mBlinded, blindsecp256k1.N)
-	return mBlinded, u
+	return mBlinded, u, nil
 }
 
 // Signature contains the signature values S & F

@@ -1,7 +1,7 @@
 // Package blindsecp256k1 implements the Blind signature scheme explained at
 // "New Blind Signature Schemes Based on the (Elliptic Curve) Discrete
 // Logarithm Problem", by Hamid Mala & Nafiseh Nezhadansari
-// https://sci-hub.do/10.1109/ICCKE.2013.6682844
+// https://sci-hub.st/10.1109/ICCKE.2013.6682844
 //
 // LICENSE can be found at https://github.com/arnaucube/go-blindsecp256k1/blob/master/LICENSE
 //
@@ -11,42 +11,33 @@ package blindsecp256k1
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"fmt"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 )
 
-// TMP
-// const (
-//         // MinBigIntBytesLen defines the minimum bytes length of the minimum
-//         // accepted value for the checked *big.Int
-//         MinBigIntBytesLen = 20 * 8
-// )
-
 var (
-	zero *big.Int = big.NewInt(0)
+	s256 *secp256k1.BitCurve = secp256k1.S256()
+	zero *big.Int            = big.NewInt(0)
 
 	// B (from y^2 = x^3 + B)
-	B *big.Int = btcec.S256().B
+	B *big.Int = s256.B
 
 	// P represents the secp256k1 finite field
-	P *big.Int = btcec.S256().P
-
-	// Q = (P+1)/4
-	Q = new(big.Int).Div(new(big.Int).Add(P,
-		big.NewInt(1)), big.NewInt(4)) // nolint:gomnd
+	P *big.Int = s256.P
 
 	// G represents the base point of secp256k1
 	G *Point = &Point{
-		X: btcec.S256().Gx,
-		Y: btcec.S256().Gy,
+		X: s256.Gx,
+		Y: s256.Gy,
 	}
 
 	// N represents the order of G of secp256k1
-	N *big.Int = btcec.S256().N
+	N *big.Int = s256.N
 )
 
 // Point represents a point on the secp256k1 curve
@@ -57,7 +48,7 @@ type Point struct {
 
 // Add performs the Point addition
 func (p *Point) Add(q *Point) *Point {
-	x, y := btcec.S256().Add(p.X, p.Y, q.X, q.Y)
+	x, y := s256.Add(p.X, p.Y, q.X, q.Y)
 	return &Point{
 		X: x,
 		Y: y,
@@ -66,7 +57,7 @@ func (p *Point) Add(q *Point) *Point {
 
 // Mul performs the Point scalar multiplication
 func (p *Point) Mul(scalar *big.Int) *Point {
-	x, y := btcec.S256().ScalarMult(p.X, p.Y, scalar.Bytes())
+	x, y := s256.ScalarMult(p.X, p.Y, scalar.Bytes())
 	return &Point{
 		X: x,
 		Y: y,
@@ -74,7 +65,7 @@ func (p *Point) Mul(scalar *big.Int) *Point {
 }
 
 func (p *Point) isValid() error {
-	if !btcec.S256().IsOnCurve(p.X, p.Y) {
+	if !s256.IsOnCurve(p.X, p.Y) {
 		return fmt.Errorf("Point is not on secp256k1")
 	}
 
@@ -147,14 +138,12 @@ func DecompressPoint(b [33]byte) (*Point, error) {
 }
 
 // WIP
-func newRand() *big.Int {
-	var b [32]byte
-	_, err := rand.Read(b[:])
+func newRand() (*big.Int, error) {
+	pk, err := ecdsa.GenerateKey(s256, rand.Reader)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	bi := new(big.Int).SetBytes(b[:])
-	return new(big.Int).Mod(bi, N)
+	return pk.D, nil
 }
 
 // PrivateKey represents the signer's private key
@@ -164,10 +153,16 @@ type PrivateKey big.Int
 type PublicKey Point
 
 // NewPrivateKey returns a new random private key
-func NewPrivateKey() *PrivateKey {
-	k := newRand()
+func NewPrivateKey() (*PrivateKey, error) {
+	k, err := newRand()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkBigIntSize(k); err != nil {
+		return nil, fmt.Errorf("k error: %s", err)
+	}
 	sk := PrivateKey(*k)
-	return &sk
+	return &sk, nil
 }
 
 // BigInt returns a *big.Int representation of the PrivateKey
@@ -177,8 +172,8 @@ func (sk *PrivateKey) BigInt() *big.Int {
 
 // Public returns the PublicKey from the PrivateKey
 func (sk *PrivateKey) Public() *PublicKey {
-	Q := G.Mul(sk.BigInt())
-	pk := PublicKey(*Q)
+	q := G.Mul(sk.BigInt())
+	pk := PublicKey(*q)
 	return &pk
 }
 
@@ -188,13 +183,26 @@ func (pk *PublicKey) Point() *Point {
 }
 
 // NewRequestParameters returns a new random k (secret) & R (public) parameters
-func NewRequestParameters() (*big.Int, *Point) {
-	k := newRand()
-	return k, G.Mul(k) // R = kG
+func NewRequestParameters() (*big.Int, *Point, error) {
+	k, err := newRand()
+	if err != nil {
+		return nil, nil, err
+	}
+	// k, R = kG
+	return k, G.Mul(k), nil
+}
+
+func checkBigIntSize(b *big.Int) error {
+	// check b.Bytes()==32, as go returns big-endian representation of the
+	// bigint, so if length is not 32 we have a smaller value than expected
+	if len(b.Bytes()) != 32 { //nolint:gomnd
+		return fmt.Errorf("invalid length, need 32 bytes")
+	}
+	return nil
 }
 
 // BlindSign performs the blind signature on the given mBlinded using the
-// PrivateKey and the secret k values
+// PrivateKey and the secret k values.
 func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) (*big.Int, error) {
 	// TODO add pending checks
 	if mBlinded.Cmp(N) != -1 {
@@ -203,10 +211,12 @@ func (sk *PrivateKey) BlindSign(mBlinded *big.Int, k *big.Int) (*big.Int, error)
 	if bytes.Equal(mBlinded.Bytes(), big.NewInt(0).Bytes()) {
 		return nil, fmt.Errorf("mBlinded can not be 0")
 	}
-	// TMP
-	// if mBlinded.BitLen() < MinBigIntBytesLen {
-	//         return nil, fmt.Errorf("mBlinded too small")
-	// }
+	if err := checkBigIntSize(mBlinded); err != nil {
+		return nil, fmt.Errorf("mBlinded error: %s", err)
+	}
+	if err := checkBigIntSize(k); err != nil {
+		return nil, fmt.Errorf("k error: %s", err)
+	}
 
 	// s' = dm' + k
 	sBlind := new(big.Int).Add(
@@ -231,16 +241,22 @@ func Blind(m *big.Int, signerR *Point) (*big.Int, *UserSecretData, error) {
 		return nil, nil, fmt.Errorf("signerR %s", err)
 	}
 
+	var err error
 	u := &UserSecretData{}
-	u.A = newRand()
-	u.B = newRand()
+	u.A, err = newRand()
+	if err != nil {
+		return nil, nil, err
+	}
+	u.B, err = newRand()
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// (R) F = aR' + bG
 	aR := signerR.Mul(u.A)
 	bG := G.Mul(u.B)
 	u.F = aR.Add(bG)
 
-	// TODO check that F != O (point at infinity)
 	if err := u.F.isValid(); err != nil {
 		return nil, nil, fmt.Errorf("u.F %s", err)
 	}
@@ -319,8 +335,10 @@ func Verify(m *big.Int, s *Signature, q *PublicKey) bool {
 
 	rx := new(big.Int).Mod(s.F.X, N)
 	rxh := new(big.Int).Mul(rx, h)
+	// do mod, as go-ethereum/crypto/secp256k1 can not handle scalars > 256 bits
+	rxhMod := new(big.Int).Mod(rxh, N)
 	// rxhG := G.Mul(rxh) // originally the paper uses G
-	rxhG := q.Point().Mul(rxh)
+	rxhG := q.Point().Mul(rxhMod)
 
 	right := s.F.Add(rxhG)
 

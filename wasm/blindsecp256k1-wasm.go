@@ -66,7 +66,10 @@ func blindv0(this js.Value, values []js.Value) interface{} {
 		Y: signerRy,
 	}
 
-	mBlinded, user := blindsecp256k1v0.Blind(m, signerQ, signerR)
+	mBlinded, user, err := blindsecp256k1v0.Blind(m, signerQ, signerR)
+	if err != nil {
+		panic(err)
+	}
 
 	r := make(map[string]interface{})
 	r["mBlinded"] = mBlinded.String()
