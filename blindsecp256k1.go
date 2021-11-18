@@ -77,7 +77,8 @@ func (p *Point) isValid() error {
 	return nil
 }
 
-// Compress packs a Point to a byte array of 33 bytes, encoded in little-endian.
+// Compress packs a Point to a byte array of 33 bytes, encoded in
+// little-endian.
 func (p *Point) Compress() [33]byte {
 	xBytes := p.X.Bytes()
 	odd := byte(0)
@@ -134,7 +135,7 @@ func DecompressPoint(b [33]byte) (*Point, error) {
 	}
 
 	p := &Point{X: x, Y: y}
-	return p, nil
+	return p, p.isValid()
 }
 
 // WIP
