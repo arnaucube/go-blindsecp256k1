@@ -196,9 +196,9 @@ func NewRequestParameters() (*big.Int, *Point, error) {
 func checkBigIntSize(b *big.Int) error {
 	// check b.Bytes()==32, as go returns big-endian representation of the
 	// bigint, so if length is not 32 we have a smaller value than expected
-	if len(b.Bytes()) != 32 { //nolint:gomnd
-		return fmt.Errorf("invalid length, need 32 bytes")
-	}
+	// if len(b.Bytes()) != 32 { //nolint:gomnd
+	//         return fmt.Errorf("invalid length, need 32 bytes")
+	// }
 	return nil
 }
 
