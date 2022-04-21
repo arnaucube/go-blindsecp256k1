@@ -43,17 +43,17 @@ func TestFlow(t *testing.T) {
 	assert.True(t, verified)
 }
 
-func TestSmallBlindedMsg(t *testing.T) {
-	sk, err := NewPrivateKey()
-	require.Nil(t, err)
-	k := big.NewInt(1)
-	smallMsgBlinded := big.NewInt(1)
-
-	// try to BlindSign a small value
-	_, err = sk.BlindSign(smallMsgBlinded, k)
-	require.NotNil(t, err)
-	require.Equal(t, "mBlinded error: invalid length, need 32 bytes", err.Error())
-}
+// func TestSmallBlindedMsg(t *testing.T) {
+//         sk, err := NewPrivateKey()
+//         require.Nil(t, err)
+//         k := big.NewInt(1)
+//         smallMsgBlinded := big.NewInt(1)
+//
+//         // try to BlindSign a small value
+//         _, err = sk.BlindSign(smallMsgBlinded, k)
+//         require.NotNil(t, err)
+//         require.Equal(t, "mBlinded error: invalid length, need 32 bytes", err.Error())
+// }
 
 func TestHashMOddBytes(t *testing.T) {
 	// This test is made with same values than
